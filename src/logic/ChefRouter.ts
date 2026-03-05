@@ -5,7 +5,7 @@
  */
 
 import { IncomingMessage } from '../adapters/IMessengerProvider';
-import { AIEngine } from './AIEngine';
+import { AgentOrchestrator } from './AgentOrchestrator';
 import { LeadManager } from './LeadManager';
 import { SessionManager } from './SessionManager';
 
@@ -104,7 +104,7 @@ export class ChefRouter {
       const history = await SessionManager.getHistory(userId, 10);
       console.log(`[ChefRouter] ${history.length} msgs no histórico. Enviando para IA...`);
 
-      const aiResponse = await AIEngine.generateResponse(msg.userName, input, history);
+      const aiResponse = await AgentOrchestrator.process(msg.userName, input, history);
 
       await SessionManager.addMessage(userId, 'user', input);
       await SessionManager.addMessage(userId, 'assistant', aiResponse);
