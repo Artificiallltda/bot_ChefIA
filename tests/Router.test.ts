@@ -1,32 +1,42 @@
 import { ChefRouter } from '../src/logic/ChefRouter';
-import { DatabaseUtils } from '../src/utils/DatabaseUtils';
+import { LeadManager } from '../src/logic/LeadManager';
+import { SessionManager } from '../src/logic/SessionManager';
 import { AIEngine } from '../src/logic/AIEngine';
 
-// Mocks Globais (Issue 8)
-jest.mock('../src/utils/DatabaseUtils');
-jest.mock('../src/logic/AIEngine');
-jest.mock('node-telegram-bot-api');
+jest.mock('../src/logic/LeadManager', () => ({
+    LeadManager: {
+        getUserState: jest.fn().mockResolvedValue({ step: 'REGISTERED' }),
+        setUserState: jest.fn(),
+        addLead: jest.fn()
+    }
+}));
+jest.mock('../src/logic/SessionManager', () => ({
+    SessionManager: {
+        getHistory: jest.fn().mockResolvedValue([]),
+        addMessage: jest.fn(),
+        clearSession: jest.fn()
+    }
+}));
+jest.mock('../src/logic/AIEngine', () => ({
+    AIEngine: {
+        generateResponse: jest.fn().mockResolvedValue('Resposta mock do ChefIA!')
+    }
+}));
 
-describe('ChefRouter', () => {
-    let router: ChefRouter;
-    let mockDb: jest.Mocked<DatabaseUtils>;
-    let mockAi: jest.Mocked<AIEngine>;
+const mockMsg = (text: string) => ({
+    userId: 'router_test_user', userName: 'RouterTester', text, platform: 'Telegram' as const
+});
 
-    beforeEach(() => {
-        mockDb = new DatabaseUtils() as jest.Mocked<DatabaseUtils>;
-        mockAi = new AIEngine() as jest.Mocked<AIEngine>;
-        router = new ChefRouter();
+describe('ChefRouter (compatibilidade)', () => {
+    beforeEach(() => jest.clearAllMocks());
+
+    test('deve estar definido como modulo estatico', () => {
+        expect(ChefRouter.handleMessage).toBeDefined();
     });
 
-    test('deve inicializar o bot sem erros', () => {
-        expect(router).toBeDefined();
-    });
-
-    test('deve processar mensagens de boas-vindas com mocks', async () => {
-        // Mock da resposta da IA
-        (mockAi.generateResponse as jest.Mock).mockResolvedValue('Olá, sou o ChefIA Mock!');
-        
-        // Simulação de teste aqui...
-        expect(mockAi.generateResponse).toBeDefined();
+    test('deve processar mensagem de usuario registrado via IA', async () => {
+        const res = await ChefRouter.handleMessage(mockMsg('O que e sourdough?'));
+        expect(res).toBe('Resposta mock do ChefIA!');
+        expect(AIEngine.generateResponse).toHaveBeenCalled();
     });
 });

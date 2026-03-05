@@ -28,11 +28,20 @@ export class AIEngine {
   }
 
   static async generateResponse(userName: string, input: string, history: ChatMessage[] = []): Promise<string> {
-    const apiKey = process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY;
     const model = process.env.AIOS_DEFAULT_MODEL || 'gpt-4o';
 
+    // Seletor explícito: baseia-se no nome do modelo, não na presença das chaves
+    const useAnthropic = model.toLowerCase().includes('claude');
+    const apiKey = useAnthropic
+      ? process.env.ANTHROPIC_API_KEY
+      : process.env.OPENAI_API_KEY;
+
+    console.log(`[AIEngine] Provider selecionado: ${useAnthropic ? 'Anthropic' : 'OpenAI'} | Modelo: ${model}`);
+
     if (!apiKey) {
-      return 'Ops! Estou sem meu chapeu de chef agora (API Key nao configurada). Mas posso te dizer que um bom pao leva tempo e paciencia!';
+      const missing = useAnthropic ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY';
+      console.error(`[AIEngine] Variável ${missing} não encontrada no .env`);
+      return 'Ops! Estou sem meu chapéu de chef agora (API Key não configurada). Verifique o .env do servidor.';
     }
 
     const knowledge = this.getKnowledgeContext();
@@ -66,16 +75,16 @@ ${knowledge}
     ];
 
     try {
-      if (process.env.ANTHROPIC_API_KEY && !process.env.OPENAI_API_KEY) {
+      if (useAnthropic) {
         const response = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'x-api-key': process.env.ANTHROPIC_API_KEY,
+            'x-api-key': apiKey,
             'anthropic-version': '2023-06-01'
           },
           body: JSON.stringify({
-            model: model.includes('claude') ? model : 'claude-3-5-sonnet-20241022',
+            model,
             max_tokens: 2048,
             system: systemPrompt,
             messages: [{ role: 'user', content: input }]
@@ -84,8 +93,8 @@ ${knowledge}
 
         if (!response.ok) {
           const errorData = await response.json();
-          console.error('Erro na API Anthropic:', errorData);
-          return 'Tive um problema com meu mentor Anthropic. Pode tentar de novo?';
+          console.error('[AIEngine] Erro na API Anthropic:', errorData);
+          return 'Tive um problema com meu mentor de IA. Pode tentar de novo em instantes?';
         }
 
         const data: any = await response.json();

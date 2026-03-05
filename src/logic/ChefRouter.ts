@@ -1,6 +1,7 @@
 ﻿/**
  * ChefRouter.ts
- * O Maestro que conecta a voz (adapters) ao cerebro (logic).
+ * O Maestro que conecta a voz (adapters) ao cérebro (logic).
+ * v2.0.0 — Comandos completos adicionados + fluxo de registro robusto.
  */
 
 import { IncomingMessage } from '../adapters/IMessengerProvider';
@@ -8,74 +9,110 @@ import { AIEngine } from './AIEngine';
 import { LeadManager } from './LeadManager';
 import { SessionManager } from './SessionManager';
 
+const MENU_TEXT = `
+🍳 *Menu do ChefIA*
+
+Escolha um tema para começarmos:
+• *Panificação* — Pães, sourdough, fermentos
+• *Nutrição* — Ingredientes, substituições, macros
+• *Zero Waste* — Aproveitamento integral, cascas, talos
+
+Ou pergunte o que quiser diretamente!
+`.trim();
+
+const HELP_TEXT = `
+📋 *Comandos disponíveis:*
+
+/start — Iniciar ou reiniciar o bot
+/menu — Ver opções de mentoria
+/status — Ver seus dados de cadastro
+/reset_sessao — Limpar histórico da conversa
+/reset_vendas — Resetar seu cadastro completamente
+/help — Exibir esta mensagem
+`.trim();
+
 export class ChefRouter {
-  /**
-   * Processa a mensagem do usuario e retorna a resposta do mentor via IA,
-   * garantindo que o usuario esteja registrado antes de liberar o acesso.
-   */
   static async handleMessage(msg: IncomingMessage): Promise<string> {
     const userId = msg.userId;
     const input = msg.text.trim();
 
-    // 0. Comandos de Reset
+    // ── Comandos globais (funcionam em qualquer estado) ──────────────────────
+    if (input === '/start' || input === '/start@ChefIABot') {
+      await LeadManager.setUserState(userId, { step: 'START' });
+      await SessionManager.clearSession(userId);
+      return `Olá, ${msg.userName}! Sou o *ChefIA*, seu mentor gastronômico especializado em Panificação, Nutrição e Zero Waste.\n\n${HELP_TEXT}`;
+    }
+
+    if (input === '/help' || input === '/help@ChefIABot') {
+      return HELP_TEXT;
+    }
+
+    if (input === '/menu' || input === '/menu@ChefIABot') {
+      return MENU_TEXT;
+    }
+
+    if (input === '/status' || input === '/status@ChefIABot') {
+      const state = await LeadManager.getUserState(userId);
+      if (state.step !== 'REGISTERED') {
+        return '⚠️ Você ainda não concluiu seu cadastro. Mande qualquer mensagem para começar!';
+      }
+      // Busca dados do lead (simplificado — exibe estado atual)
+      return `✅ *Seu status no ChefIA*\n\n👤 Nome: ${msg.userName}\n📱 Plataforma: ${msg.platform}\n🔐 Acesso: Liberado\n\nDigite sua dúvida gastronômica!`;
+    }
+
     if (input === '/reset_vendas') {
       await LeadManager.setUserState(userId, { step: 'START' });
       await SessionManager.clearSession(userId);
-      return '** Sistema Resetado!** Seus dados de onboarding e historico de conversa foram limpos. Mande qualquer mensagem para iniciar do zero.';
+      return '🔄 *Sistema Resetado!* Seus dados de cadastro e histórico foram limpos. Mande qualquer mensagem para iniciar do zero.';
     }
 
     if (input === '/reset_sessao') {
       await SessionManager.clearSession(userId);
-      return '** Sessao Limpa!** Esqueci o que conversamos agora ha pouco, mas ainda lembro de voce. Como posso ajudar de novo?';
+      return '🧹 *Sessão Limpa!* Esqueci nossa conversa recente, mas ainda lembro de você. Como posso ajudar?';
     }
-    
-    // 1. Verificar Estado do Registro (Lead Generation)
+
+    // ── Fluxo de Cadastro ────────────────────────────────────────────────────
     const state = await LeadManager.getUserState(userId);
 
-    // Fluxo de Cadastro Inicial
     if (state.step === 'START') {
       await LeadManager.setUserState(userId, { step: 'AWAITING_EMAIL' });
-      return `Ola, ${msg.userName}! Sou o **ChefIA**, seu mentor de gastronomia.\n\nNotei que este e o seu primeiro acesso. Para liberar sua mentoria tecnica e acesso a minha base de receitas exclusivas, me diga o seu **melhor e-mail**:`;
+      return `Olá, ${msg.userName}! Sou o *ChefIA*, seu mentor de gastronomia.\n\nNão te vi antes por aqui! Para liberar sua mentoria técnica, me diga o seu *melhor e-mail*:`;
     }
 
     if (state.step === 'AWAITING_EMAIL') {
       if (!input.includes('@') || !input.includes('.')) {
-        return 'Ops! Esse e-mail parece estar com algum erro. Pode digitar novamente para eu garantir que seu acesso seja liberado?';
+        return '⚠️ Esse e-mail parece estar incorreto. Pode digitar novamente?';
       }
       await LeadManager.addLead(userId, { email: input, userName: msg.userName, platform: msg.platform });
       await LeadManager.setUserState(userId, { step: 'AWAITING_PHONE' });
-      return 'Perfeito! Agora, me diga seu **numero de celular** (com DDD) para que eu possa te enviar novidades e dicas exclusivas:';
+      return 'Perfeito! Agora me diga seu *número de celular* (com DDD):';
     }
 
     if (state.step === 'AWAITING_PHONE') {
       const digits = input.replace(/\D/g, '');
       if (digits.length < 10) {
-        return 'Poderia me enviar o numero com o DDD? Assim garantimos seu cadastro na nossa lista VIP de Chefs!';
+        return '⚠️ Poderia me enviar o número com DDD? Ex: 41999991111';
       }
       await LeadManager.addLead(userId, { phone: input });
       await LeadManager.setUserState(userId, { step: 'REGISTERED' });
-      return '** Parabens!** Seu acesso ao ChefIA esta oficialmente liberado.\n\nSou seu mentor em panificacao, nutricao e aproveitamento integral. Como posso ajudar na sua cozinha hoje?';
+      return `✅ *Cadastro concluído!* Bem-vindo à mentoria do ChefIA, ${msg.userName}!\n\n${MENU_TEXT}`;
     }
 
-    // 2. Se ja registrado, libera o cerebro total (IA) com Historico
+    // ── IA (usuário já registrado) ────────────────────────────────────────────
     try {
-      console.log(`[ChefRouter] Recuperando historico para ${msg.userName} (ID: ${userId})...`);
+      console.log(`[ChefRouter] Recuperando histórico para ${msg.userName} (ID: ${userId})...`);
       const history = await SessionManager.getHistory(userId, 10);
-      
-      console.log(`[ChefRouter] Historico recuperado: ${history.length} mensagens.`);
-      console.log(`[ChefRouter] Enviando para IA para ${msg.userName}: "${input}"`);
-      
+      console.log(`[ChefRouter] ${history.length} msgs no histórico. Enviando para IA...`);
+
       const aiResponse = await AIEngine.generateResponse(msg.userName, input, history);
 
-      // Salvar na sessao APOS a resposta ser gerada
-      console.log(`[ChefRouter] Salvando interacao no banco...`);
       await SessionManager.addMessage(userId, 'user', input);
       await SessionManager.addMessage(userId, 'assistant', aiResponse);
 
       return aiResponse;
     } catch (error) {
-      console.error('[ChefRouter] Erro critico no AIEngine:', error);
-      return `Ola ${msg.userName}! Tive um breve colapso na cozinha (erro de conexao). Pode repetir sua pergunta em um instante?`;
+      console.error('[ChefRouter] Erro crítico no AIEngine:', error);
+      return `${msg.userName}, tive um breve colapso na cozinha (erro de conexão). Pode repetir sua pergunta em um instante?`;
     }
   }
 }
