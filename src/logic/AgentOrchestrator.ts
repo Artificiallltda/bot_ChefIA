@@ -64,34 +64,27 @@ export class AgentOrchestrator {
                 return SocialAgent.respond(userName, input, history);
 
             case 'misto': {
-                // Dois ou mais agentes trabalham em paralelo
-                console.log('[Orchestrator] Acionando múltiplos agentes em paralelo...');
+                // Em vez de acionar múltiplos agentes e colar os textos gigantescos,
+                // pedimos ao AIEngine (cérebro central) para processar as múltiplas intenções de forma fluida.
+                console.log('[Orchestrator] Intenção mista detectada. Encaminhando ao AIEngine com contexto enriquecido...');
 
                 const lower = input.toLowerCase();
                 const isSocial = ['instagram', 'tiktok', 'post', 'legenda', 'reel', 'story', 'hashtag', 'conteúdo', 'conteudo'].some(k => lower.includes(k));
                 const isNutri = ['caloria', 'macro', 'proteina', 'dieta', 'vegano', 'gluten', 'lactose', 'kcal', 'nutri'].some(k => lower.includes(k));
 
-                const promises: Promise<string>[] = [];
-                const labels: string[] = [];
-
-                // Sempre inclui ChefWriter no misto (base técnica)
-                promises.push(ChefWriter.respond(userName, input, history));
-                labels.push('🍞 Técnica');
-
-                if (isNutri) {
-                    promises.push(Nutritionist.respond(userName, `Informações nutricionais sobre: ${input}`, history));
-                    labels.push('🥗 Nutrição');
+                let extraContext = "Contexto adicional para a sua resposta: ";
+                if (isNutri && isSocial) {
+                    extraContext += "O usuário precisa de ajuda mesclando dicas nutricionais com criação de conteúdo social/gastronômico.";
+                } else if (isNutri) {
+                    extraContext += "O usuário está misturando uma dúvida técnica de cozinha com nutrição/dietas. Resolva as duas partes de forma unificada e concisa.";
+                } else if (isSocial) {
+                    extraContext += "O usuário está querendo pegar uma técnica de pão/comida para usar em mídias sociais. Adapte o tom.";
                 }
 
-                if (isSocial) {
-                    promises.push(SocialAgent.respond(userName, `Crie conteúdo para redes sociais sobre: ${input}`, history));
-                    labels.push('📱 Conteúdo Social');
-                }
+                // Cria um input enriquecido invisível ao usuário, visível ao LLM
+                const enrichedInput = `[INSTRUÇÃO DO ORQUESTRADOR: ${extraContext}]\n\nMensagem do usuário: ${input}`;
 
-                const results = await Promise.all(promises);
-
-                // Une as respostas com separadores visuais
-                return results.map((r, i) => `*${labels[i]}*\n${r}`).join('\n\n---\n\n');
+                return AIEngine.generateResponse(userName, enrichedInput, history);
             }
 
             default:
