@@ -1,7 +1,7 @@
 {
   "name": "@synkra/chefia-core",
-  "version": "2.2.8",
-  "description": "ChefIA Core Intelligence - God Mode Final Force",
+  "version": "2.2.9",
+  "description": "ChefIA Core Intelligence - Series 2.5 Vision",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
