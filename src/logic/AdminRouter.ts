@@ -1,5 +1,5 @@
 import { IncomingMessage, ServerResponse } from 'http';
-import { DatabaseUtils } from './DatabaseUtils';
+import { supabase } from '../utils/SupabaseClient';
 
 /**
  * AdminRouter.ts
@@ -32,19 +32,22 @@ export class AdminRouter {
         // ── GET /admin/leads ────────────────────────────────────────────────────
         if (url === '/admin/leads' && req.method === 'GET') {
             try {
-                const result = await DatabaseUtils.executeWithRetry(
-                    'SELECT user_id, user_name, email, phone, platform, registered_at FROM leads ORDER BY registered_at DESC',
-                    []
-                );
+                const { data, error } = await supabase
+                    .from('leads')
+                    .select('user_id, user_name, email, phone, platform, registered_at')
+                    .order('registered_at', { ascending: false });
+
+                if (error) throw error;
+
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({
-                    total: result.rows.length,
-                    leads: result.rows
+                    total: data.length,
+                    leads: data
                 }));
             } catch (error: any) {
                 console.error('[Admin] Erro ao buscar leads:', error.message);
                 res.writeHead(500, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: 'Erro ao consultar o banco.' }));
+                res.end(JSON.stringify({ error: 'Erro ao consultar o banco no Supabase.' }));
             }
             return;
         }
@@ -52,13 +55,13 @@ export class AdminRouter {
         // ── GET /admin/stats ────────────────────────────────────────────────────
         if (url === '/admin/stats' && req.method === 'GET') {
             try {
-                const [leadsRes, msgsRes] = await Promise.all([
-                    DatabaseUtils.executeWithRetry('SELECT COUNT(*) as total FROM leads', []),
-                    DatabaseUtils.executeWithRetry('SELECT COUNT(*) as total FROM messages', [])
+                const [leadsCount, msgsCount] = await Promise.all([
+                    supabase.from('leads').select('*', { count: 'exact', head: true }),
+                    supabase.from('messages').select('*', { count: 'exact', head: true })
                 ]);
 
-                const totalLeads = parseInt(leadsRes.rows[0]?.total || '0');
-                const totalMsgs = parseInt(msgsRes.rows[0]?.total || '0');
+                const totalLeads = leadsCount.count || 0;
+                const totalMsgs = msgsCount.count || 0;
 
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({
@@ -70,7 +73,7 @@ export class AdminRouter {
             } catch (error: any) {
                 console.error('[Admin] Erro ao buscar stats:', error.message);
                 res.writeHead(500, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: 'Erro ao consultar o banco.' }));
+                res.end(JSON.stringify({ error: 'Erro ao consultar o banco no Supabase.' }));
             }
             return;
         }

@@ -3,7 +3,6 @@ import http from 'http';
 import { TelegramProvider } from './adapters/TelegramProvider';
 import { WhatsAppProvider } from './adapters/WhatsAppProvider';
 import { ChefRouter } from './logic/ChefRouter';
-import { DatabaseUtils } from './logic/DatabaseUtils';
 import { AdminRouter } from './logic/AdminRouter';
 
 dotenv.config();
@@ -23,10 +22,6 @@ let whatsapp: WhatsAppProvider | null = null;
 
 async function bootstrap() {
   console.log('ChefIA: Iniciando sistema de mentoria...');
-
-  // 1. Inicializa tabelas no startup
-  await DatabaseUtils.initializeTables();
-  console.log('[DB] Tabelas inicializadas com sucesso.');
 
   // 2. Telegram Provider
   const telegram = new TelegramProvider(token!);
