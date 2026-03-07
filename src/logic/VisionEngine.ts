@@ -3,56 +3,57 @@ import { ChatMessage } from './SessionManager';
 import fetch from 'node-fetch';
 
 /**
- * VisionEngine.ts (v2.2.3 - Stable Vision)
- * Motor de visão oficial via @google/generative-ai.
+ * VisionEngine.ts (v2.2.4 - God Mode Stable Vision)
+ * Motor de visão otimizado para Gemini 1.5 Flash.
  */
 export class VisionEngine {
   private static genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
   static async generateVisionResponse(userName: string, input: string, imageUrl: string, history: ChatMessage[] = []): Promise<string> {
     if (!process.env.GEMINI_API_KEY) {
-      return 'ChefIA: Minha visão de raio-x está desativada no momento (GEMINI_API_KEY não configurada). Mas pode me descrever o prato!';
+      return 'ChefIA: Minha visão está desativada (falta GEMINI_API_KEY). Descreva os ingredientes para mim!';
     }
 
     try {
-      console.log(`[VisionEngine] Baixando imagem para análise...`);
+      console.log(`[VisionEngine] Iniciando análise visual para ${userName}...`);
       const response = await fetch(imageUrl);
-      if (!response.ok) throw new Error('Falha ao baixar a imagem.');
+      if (!response.ok) throw new Error('Falha ao baixar imagem do Telegram.');
       
-      const arrayBuffer = await response.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
+      const buffer = await response.arrayBuffer();
+      const base64Data = Buffer.from(buffer).toString('base64');
       const mimeType = response.headers.get('content-type') || 'image/jpeg';
 
-      console.log(`[VisionEngine] Imagem baixada (${mimeType}). Acionando Gemini 2.0 Flash...`);
+      // Usando 1.5-flash: O cavalo de batalha mais estável para visão
+      const model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
-      const model = this.genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+      const prompt = `Você é o ChefIA, um Mentor Gastronômico experiente.
+O usuário ${userName} te enviou uma FOTO de ingredientes ou pratos.
 
-      const prompt = `Você é o ChefIA, um Mentor Gastronômico e Chef executivo.
-O usuário ${userName} enviou uma imagem.
-Analise os ingredientes ou pratos visíveis na foto.
+--- MISSÃO ---
+1. Analise a imagem e identifique TUDO o que é visível (ex: macarrão, marca do tomate, creme de leite).
+2. Use o contexto da pergunta do usuário: "${input || 'O que posso fazer com isso, Chef?'}"
+3. Responda de forma curta, técnica e encorajadora.
+4. Se for um pedido de receita, dê o passo a passo baseado estritamente no que você está vendo.
 
---- DIRETRIZES ---
-1. Identifique TUDO o que está na foto (ex: marcas de tomate pelado, tipo de massa, creme de leite, etc).
-2. Responda de forma direta e concisa (como um Chef em serviço).
-3. Se o usuário pediu uma receita, use os ingredientes da foto como base principal.
-4. Pergunta do usuário: "${input || 'O que você acha disso, Chef?'}"
-5. Responda SEMPRE em Português do Brasil.`;
+RESPONDA SEMPRE EM PORTUGUÊS DO BRASIL.`;
 
-      const imagePart = {
-        inlineData: {
-          data: buffer.toString('base64'),
-          mimeType
+      const result = await model.generateContent([
+        prompt,
+        {
+          inlineData: {
+            data: base64Data,
+            mimeType: mimeType
+          }
         }
-      };
+      ]);
 
-      const result = await model.generateContent([prompt, imagePart]);
-      const resultResponse = await result.response;
-      
-      return resultResponse.text() || 'Hmm, não consegui ver os detalhes dessa foto claramente.';
+      const textResponse = result.response.text();
+      console.log(`[VisionEngine] Análise concluída com sucesso.`);
+      return textResponse;
 
     } catch (error: any) {
-      console.error('[VisionEngine] Erro durante análise visual:', error.message || error);
-      return 'ChefIA: Tive um problema ao processar a foto. Pode me descrever o que está acontecendo?';
+      console.error('[VisionEngine] Erro crítico:', error.message);
+      return 'ChefIA: Tive um problema ao processar essa foto. Pode tentar me mandar de novo ou descrever os itens?';
     }
   }
 }

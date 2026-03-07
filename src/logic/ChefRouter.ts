@@ -37,6 +37,23 @@ export class ChefRouter {
     const userId = msg.userId;
     const input = msg.text.trim();
 
+    console.log(`[ChefRouter] Processando mensagem de ${msg.userName} (Imagem: ${!!msg.imageUrl})`);
+
+    // ── PRIORIDADE MÁXIMA: VISÃO DO CHEF ──────────────────────────────────────
+    // Se enviou imagem, analisamos imediatamente independente do estado do lead.
+    if (msg.imageUrl) {
+      try {
+        const history = await SessionManager.getHistory(userId, 5);
+        const aiResponse = await VisionEngine.generateVisionResponse(msg.userName, input, msg.imageUrl, history);
+        
+        await SessionManager.addMessage(userId, 'user', input || '[Foto enviada]');
+        await SessionManager.addMessage(userId, 'assistant', aiResponse);
+        return aiResponse;
+      } catch (error) {
+        console.error('[ChefRouter] Erro na visão:', error);
+      }
+    }
+
     // ── Comandos globais (funcionam em qualquer estado) ──────────────────────
     if (input === '/start' || input === '/start@ChefIABot') {
       await LeadManager.setUserState(userId, { step: 'START' });
