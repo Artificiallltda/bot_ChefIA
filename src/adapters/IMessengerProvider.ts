@@ -8,6 +8,7 @@ export interface IncomingMessage {
   userName: string;
   text: string;
   platform: 'WhatsApp' | 'Telegram';
+  imageUrl?: string; // NOVO: Suporte a Visao do Chef
 }
 
 export interface OutgoingMessage {

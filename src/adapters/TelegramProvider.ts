@@ -17,14 +17,32 @@ export class TelegramProvider implements IMessengerProvider {
   }
 
   private setupListeners(): void {
-    this.bot.on('message', (msg) => {
-      if (!msg.text || !this.messageCallback) return;
+    this.bot.on('message', async (msg) => {
+      if (!this.messageCallback) return;
+
+      let text = msg.text || msg.caption || '';
+      let imageUrl: string | undefined;
+
+      // Se houver uma foto na mensagem, pegamos a de maior resolução (última do array)
+      if (msg.photo && msg.photo.length > 0) {
+        const highestResPhoto = msg.photo[msg.photo.length - 1];
+        try {
+          imageUrl = await this.bot.getFileLink(highestResPhoto.file_id);
+          console.log(`[Telegram] Foto recebida, url temporária obtida.`);
+        } catch (error) {
+          console.error(`[Telegram] Falha ao obter link da foto:`, error);
+        }
+      }
+
+      // Se não tem texto e nem imagem, ignora (ex: stickers, áudios não suportados ainda)
+      if (!text && !imageUrl) return;
 
       const incoming: IncomingMessage = {
         userId: msg.chat.id.toString(),
         userName: msg.from?.first_name || 'Usuário',
-        text: msg.text,
-        platform: 'Telegram'
+        text: text,
+        platform: 'Telegram',
+        imageUrl: imageUrl
       };
 
       this.messageCallback(incoming);

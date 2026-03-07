@@ -1,4 +1,4 @@
-import { DatabaseUtils } from './DatabaseUtils';
+import { supabase } from '../utils/SupabaseClient';
 
 export interface Lead {
   userId: string;
@@ -9,45 +9,67 @@ export interface Lead {
   registeredAt: string;
 }
 
+export type StepType = 'START' | 'AWAITING_EMAIL' | 'AWAITING_PHONE' | 'REGISTERED';
+
 export interface UserState {
-  step: 'START' | 'AWAITING_EMAIL' | 'AWAITING_PHONE' | 'REGISTERED';
+  step: StepType;
 }
 
+/**
+ * LeadManager (God Mode)
+ * Gerencia o funil de cadastro e estados dos usuários no Supabase.
+ */
 export class LeadManager {
+  
   static async getUserState(userId: string): Promise<UserState> {
     try {
-      await DatabaseUtils.initializeTables();
-      const res = await DatabaseUtils.executeWithRetry('SELECT step FROM user_states WHERE user_id = $1', [userId]);
-      const step = res.rows[0]?.step || 'START';
-      return { step } as UserState;
+      const { data, error } = await supabase
+        .from('user_states')
+        .select('step')
+        .eq('user_id', userId)
+        .single();
+
+      if (error && error.code !== 'PGRST116') { // PGRST116 = Não encontrado
+        console.error('[Supabase] Erro ao buscar estado:', error.message);
+      }
+
+      return { step: (data?.step as StepType) || 'START' };
     } catch (error) {
-      console.error('[DB] Falha crítica ao ler estado:', error);
+      console.error('[LeadManager] Falha crítica ao ler estado:', error);
       return { step: 'START' };
     }
   }
 
-  static async setUserState(userId: string, state: UserState): Promise<void> {
+  static async setUserState(userId: string, state: { step: StepType }): Promise<void> {
     try {
-      await DatabaseUtils.executeWithRetry(
-        'INSERT INTO user_states (user_id, step) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET step = $2',
-        [userId, state.step]
-      );
-      console.log(`[DB] Estado atualizado: ${state.step}`);
-    } catch (error) {
-      console.error('[DB] Falha crítica ao salvar estado:', error);
+      const { error } = await supabase
+        .from('user_states')
+        .upsert({ user_id: userId, step: state.step }, { onConflict: 'user_id' });
+
+      if (error) throw error;
+      console.log(`[Supabase] Estado do usuário ${userId} atualizado: ${state.step}`);
+    } catch (error: any) {
+      console.error('[LeadManager] Falha crítica ao salvar estado:', error.message);
     }
   }
 
   static async addLead(userId: string, data: Partial<Lead>): Promise<void> {
     try {
-      await DatabaseUtils.executeWithRetry(
-        'INSERT INTO leads (user_id, user_name, email, phone, platform) VALUES ($1, $2, $3, $4, $5) ' +
-        'ON CONFLICT (user_id) DO UPDATE SET email = COALESCE($3, leads.email), phone = COALESCE($4, leads.phone), user_name = $2',
-        [userId, data.userName || 'Usuário', data.email || null, data.phone || null, data.platform || 'Telegram']
-      );
-      console.log(`[DB] Lead salvo no banco profissional.`);
-    } catch (error) {
-      console.error('[DB] Falha crítica ao salvar lead:', error);
+      // Upsert: Insere ou atualiza os campos preenchidos
+      const { error } = await supabase
+        .from('leads')
+        .upsert({
+          user_id: userId,
+          user_name: data.userName,
+          email: data.email,
+          phone: data.phone,
+          platform: data.platform
+        }, { onConflict: 'user_id' });
+
+      if (error) throw error;
+      console.log(`[Supabase] Lead ${userId} salvo com sucesso na nuvem.`);
+    } catch (error: any) {
+      console.error('[LeadManager] Falha crítica ao salvar lead:', error.message);
     }
   }
 }

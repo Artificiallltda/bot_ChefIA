@@ -8,6 +8,7 @@ import { IncomingMessage } from '../adapters/IMessengerProvider';
 import { AgentOrchestrator } from './AgentOrchestrator';
 import { LeadManager } from './LeadManager';
 import { SessionManager } from './SessionManager';
+import { VisionEngine } from './VisionEngine';
 
 const MENU_TEXT = `
 🍳 *Menu do ChefIA*
@@ -104,9 +105,16 @@ export class ChefRouter {
       const history = await SessionManager.getHistory(userId, 10);
       console.log(`[ChefRouter] ${history.length} msgs no histórico. Enviando para IA...`);
 
-      const aiResponse = await AgentOrchestrator.process(msg.userName, input, history);
+      let aiResponse: string;
 
-      await SessionManager.addMessage(userId, 'user', input);
+      if (msg.imageUrl) {
+        console.log(`[ChefRouter] Imagem detectada. Acionando VisionEngine...`);
+        aiResponse = await VisionEngine.generateVisionResponse(msg.userName, input, msg.imageUrl, history);
+      } else {
+        aiResponse = await AgentOrchestrator.process(msg.userName, input, history);
+      }
+
+      await SessionManager.addMessage(userId, 'user', input || '[Enviou uma Imagem]');
       await SessionManager.addMessage(userId, 'assistant', aiResponse);
 
       return aiResponse;
