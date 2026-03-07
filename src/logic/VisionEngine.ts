@@ -1,9 +1,8 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ChatMessage } from './SessionManager';
-import fetch from 'node-fetch';
 
 /**
- * VisionEngine.ts (v2.2.4 - God Mode Stable Vision)
+ * VisionEngine.ts (v2.2.5 - Native Fetch Fix)
  * Motor de visão otimizado para Gemini 1.5 Flash.
  */
 export class VisionEngine {

@@ -49,8 +49,9 @@ export class ChefRouter {
         await SessionManager.addMessage(userId, 'user', input || '[Foto enviada]');
         await SessionManager.addMessage(userId, 'assistant', aiResponse);
         return aiResponse;
-      } catch (error) {
-        console.error('[ChefRouter] Erro na visão:', error);
+      } catch (error: any) {
+        console.error('[ChefRouter] Erro crítico na visão:', error);
+        return 'ChefIA: Desculpe, não consegui processar a sua imagem agora (Erro de Conexão). Pode descrevê-la para mim?';
       }
     }
 
