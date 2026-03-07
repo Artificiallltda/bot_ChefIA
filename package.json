@@ -1,7 +1,7 @@
 {
   "name": "@synkra/chefia-core",
-  "version": "2.0.0",
-  "description": "ChefIA Core Intelligence - Gastronomic Math & Nutrition",
+  "version": "2.2.8",
+  "description": "ChefIA Core Intelligence - God Mode Final Force",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
