@@ -1,7 +1,7 @@
 {
   "name": "@synkra/chefia-core",
-  "version": "2.2.9",
-  "description": "ChefIA Core Intelligence - Series 2.5 Vision",
+  "version": "2.3.0",
+  "description": "ChefIA Core Intelligence - OpenAI GPT-4o Vision",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {

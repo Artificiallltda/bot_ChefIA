@@ -1,55 +1,50 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import OpenAI from 'openai';
 import { ChatMessage } from './SessionManager';
 
 /**
- * VisionEngine.ts (v2.2.9 - Community Recommended Models)
- * Atualizado para a série 2.5/Latest conforme restrição do Google.
+ * VisionEngine.ts (v2.3.0 - OpenAI GPT-4o Vision)
+ * Migrado para OpenAI para garantir estabilidade absoluta e alta precisão.
  */
 export class VisionEngine {
+  private static openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
   static async generateVisionResponse(userName: string, input: string, imageUrl: string, history: ChatMessage[] = []): Promise<string> {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) return 'ChefIA: API Key não encontrada.';
+    if (!process.env.OPENAI_API_KEY) {
+      return 'ChefIA: Minha visão OpenAI está desativada. Verifique a OPENAI_API_KEY!';
+    }
 
     try {
-      console.log(`[Vision] Acionando modelos de próxima geração para ${userName}...`);
-      
-      const response = await fetch(imageUrl);
-      const buffer = await response.arrayBuffer();
-      const base64Data = Buffer.from(buffer).toString('base64');
-      const mimeType = response.headers.get('content-type') || 'image/jpeg';
+      console.log(`[Vision] Iniciando análise GPT-4o para ${userName}...`);
 
-      const genAI = new GoogleGenerativeAI(apiKey);
-      
-      // Tentamos o 2.5 Flash ou o gemini-flash-latest (que o Google recomenda como substituto)
-      const modelNames = ['gemini-2.0-flash-exp', 'gemini-1.5-flash-latest', 'gemini-1.5-pro-latest'];
-      
-      let lastError = '';
-      for (const modelName of modelNames) {
-        try {
-          console.log(`[Vision] Tentando modelo: ${modelName}...`);
-          const model = genAI.getGenerativeModel({ model: modelName });
+      const response = await this.openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: "Você é o ChefIA, um Mentor Gastronômico experiente. Analise a imagem enviada e responda como um Chef profissional, direto e técnico. Use Português do Brasil."
+          },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: input || "O que você vê nesta foto? Me dê uma receita se houver ingredientes." },
+              {
+                type: "image_url",
+                image_url: {
+                  url: imageUrl, // OpenAI aceita a URL direta do Telegram! (Mais rápido e estável)
+                },
+              },
+            ],
+          },
+        ],
+        max_tokens: 1500,
+      });
 
-          const prompt = `Você é o ChefIA. Analise a foto e responda a ${userName}: "${input || 'O que posso fazer com esses ingredientes?'}"
-Seja direto e técnico. Responda em Português do Brasil sempre.`;
-
-          const result = await model.generateContent([
-            prompt,
-            { inlineData: { data: base64Data, mimeType } }
-          ]);
-
-          const text = result.response.text();
-          if (text) return text;
-        } catch (e: any) {
-          console.warn(`[Vision] Falha no modelo ${modelName}: ${e.message}`);
-          lastError = e.message;
-        }
-      }
-
-      throw new Error(`O Google recusou todos os modelos atuais. Motivo: ${lastError}`);
+      console.log(`[Vision] Análise GPT-4o concluída.`);
+      return response.choices[0].message.content || 'Não consegui analisar a foto.';
 
     } catch (error: any) {
-      console.error('[Vision Error]:', error.message);
-      return `ChefIA (Erro Série 2.5): ${error.message}. Comandante, verifique se sua chave suporta os modelos experimentais no Google AI Studio.`;
+      console.error('[Vision Error OpenAI]:', error.message);
+      return `ChefIA (Erro OpenAI): ${error.message}`;
     }
   }
 }
