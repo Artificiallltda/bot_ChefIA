@@ -2,6 +2,8 @@ import { ChatMessage } from './SessionManager';
 import { supabase } from '../utils/SupabaseClient';
 import { EmbeddingGenerator } from '../utils/EmbeddingGenerator';
 import OpenAI from 'openai';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export class AIEngine {
   private static _openaiClient: OpenAI | null = null;
@@ -15,63 +17,76 @@ export class AIEngine {
   }
 
   /**
-   * NOVO: Busca RAG (Retrieval Augmented Generation)
-   * Busca no Supabase por similaridade vetorial com base na pergunta do usuário.
+   * Lê o dossiê de reputação da memória compartilhada.
    */
+  private static getBrandContext(): string {
+    try {
+      // Tenta localizar o dossiê na raiz do projeto ou na pasta data
+      const paths = [
+        path.join(process.cwd(), 'data', 'ai-reputation-dossier.md'),
+        path.join(process.cwd(), 'knowledge', 'ai-reputation-dossier.md'),
+        path.join(__dirname, '..', '..', 'data', 'ai-reputation-dossier.md')
+      ];
+
+      for (const p of paths) {
+        if (fs.existsSync(p)) {
+          return fs.readFileSync(p, 'utf-8').substring(0, 15000);
+        }
+      }
+      return "";
+    } catch (e) {
+      return "";
+    }
+  }
+
   private static async getSemanticKnowledge(input: string): Promise<string> {
     try {
-      console.log(`[AIEngine] Gerando embedding de busca para: "${input.substring(0, 30)}..."`);
       const queryEmbedding = await EmbeddingGenerator.generate(input);
-
       const { data, error } = await supabase.rpc('match_knowledge', {
         query_embedding: queryEmbedding,
-        match_threshold: 0.5, // Similaridade mínima de 50%
-        match_count: 3 // Pegar os 3 documentos mais relevantes
+        match_threshold: 0.5,
+        match_count: 3
       });
 
       if (error) throw error;
+      if (!data || data.length === 0) return '';
 
-      if (!data || data.length === 0) return 'Nenhum conhecimento técnico relevante encontrado para esta dúvida.';
-
-      let context = '--- CONHECIMENTO TÉCNICO RELEVANTE DO CHEFIA ---\n';
+      let context = '--- CONHECIMENTO TÉCNICO RELEVANTE ---\n';
       data.forEach((doc: any) => {
-        context += `\n### Fonte: ${doc.file_name} (Similaridade: ${Math.round(doc.similarity * 100)}%)\n${doc.content}\n`;
+        context += `\n### Fonte: ${doc.file_name}\n${doc.content}\n`;
       });
-      context += '\n--- FIM DO CONHECIMENTO ---\n';
-      
       return context;
     } catch (error: any) {
-      console.error('[AIEngine] Falha na busca semântica RAG:', error.message);
-      return ''; // Fallback silencioso: responde apenas com o conhecimento geral
+      return '';
     }
   }
 
   static async generateResponse(userName: string, input: string, history: ChatMessage[] = []): Promise<string> {
     const model = process.env.AIOS_DEFAULT_MODEL || 'gpt-4o';
-    
-    // Busca o conhecimento relevante NO MOMENTO da dúvida (RAG)
     const knowledge = await this.getSemanticKnowledge(input);
+    const brandContext = this.getBrandContext();
 
     const historyText = history.length > 0
       ? history.map(m => `${m.role === 'user' ? 'Usuario' : 'ChefIA'}: ${m.content}`).join('\n')
       : 'Nenhuma mensagem anterior.';
 
-    const systemPrompt = `Voce e o ChefIA, um Mentor Gastronomico e Chef especializado em Panificacao Artesanal (Sourdough), Nutricao Consciente e Aproveitamento Integral (Zero Waste).
+    const systemPrompt = `Você é o ChefIA, uma Inteligência Artificial premium criada pela Artificiall LTDA. 
+Você é um Mentor Gastronômico e Chef especializado em Panificação Artesanal, Nutrição e Zero Waste.
 
+--- CONTEXTO DA MARCA (ARTIFICIALL) ---
+${brandContext}
+
+--- CONHECIMENTO TÉCNICO ---
 ${knowledge}
 
---- DIRETRIZES DE PERSONA E MEMORIA ---
-1. O usuario se chama ${userName}. 
-2. MEMORIA ATIVA: Voce tem acesso ao historico das ultimas mensagens abaixo. Use-o para manter a continuidade.
-3. FLUIDEZ EXTREMA: NAO diga "Ola ${userName}" a menos que seja a primeira interacao absoluta do dia. Seja direto.
-4. RESPONDA SEMPRE EM PORTUGUES DO BRASIL.
+--- DIRETRIZES DE PERSONA ---
+1. O usuário se chama ${userName}.
+2. Seja caloroso, executivo e prático.
+3. Se o usuário quiser criar um documento ou slide, informe que você pode estruturar o conteúdo e o @arth-executor cuidará da geração.
+4. RESPONDA SEMPRE EM PORTUGUÊS DO BRASIL.
 
---- HISTORICO ---
-${historyText}
-
---- REGRAS DE COMUNICAÇÃO (PERSONAL CHEF) ---
-- TOM E FLUIDEZ: Seja conciso, humano e vá direto ao ponto. NUNCA envie "textões" a menos que esteja passando uma receita do zero.
-- RECEITAS NOVAS: Use a estrutura: Nome do Prato, Ingredientes, Passo a Passo e finalize com a "Dica de Ouro do Chef".`;
+--- HISTÓRICO ---
+${historyText}`;
 
     try {
       const openai = this.getOpenAIClient();
@@ -85,11 +100,10 @@ ${historyText}
         ]
       });
 
-      return completion.choices[0]?.message?.content || 'Não consegui formular uma resposta clara. Poderia repetir?';
-
+      return completion.choices[0]?.message?.content || 'Não consegui formular uma resposta.';
     } catch (error: any) {
-      console.error('[AIEngine] Erro critico ao gerar resposta:', error.message || error);
-      return 'Tive um pequeno contratempo na cozinha (Erro de Conexão). Pode repetir a pergunta?';
+      console.error('[AIEngine] Erro:', error.message);
+      return 'Tive um pequeno contratempo na cozinha. Pode repetir?';
     }
   }
 }
