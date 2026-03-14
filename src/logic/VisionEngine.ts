@@ -1,50 +1,60 @@
-import OpenAI from 'openai';
+import { GoogleGenAI } from '@google/genai';
 import { ChatMessage } from './SessionManager';
 
 /**
- * VisionEngine.ts (v2.3.0 - OpenAI GPT-4o Vision)
- * Migrado para OpenAI para garantir estabilidade absoluta e alta precisão.
+ * VisionEngine.ts (v3.0.0 - Gemini 3.1 Pro Vision)
+ * Migrado para Gemini 3.1 Pro para visão multimodal de alta precisão.
  */
 export class VisionEngine {
-  private static openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  private static getClient(): GoogleGenAI {
+    if (!process.env.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY não configurada.");
+    return new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  }
 
   static async generateVisionResponse(userName: string, input: string, imageUrl: string, history: ChatMessage[] = []): Promise<string> {
-    if (!process.env.OPENAI_API_KEY) {
-      return 'ChefIA: Minha visão OpenAI está desativada. Verifique a OPENAI_API_KEY!';
+    if (!process.env.GEMINI_API_KEY) {
+      return 'ChefIA: Minha visão Gemini está desativada. Verifique a GEMINI_API_KEY!';
     }
 
     try {
-      console.log(`[Vision] Iniciando análise GPT-4o para ${userName}...`);
+      console.log(`[Vision] Iniciando análise Gemini 3.1 Pro para ${userName}...`);
 
-      const response = await this.openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "system",
-            content: "Você é o ChefIA, um Mentor Gastronômico experiente. Analise a imagem enviada e responda como um Chef profissional, direto e técnico. Use Português do Brasil."
-          },
+      const client = this.getClient();
+
+      // Busca a imagem da URL e converte para base64
+      const imageResponse = await fetch(imageUrl);
+      const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+      const base64Image = imageBuffer.toString('base64');
+      const mimeType = imageResponse.headers.get('content-type') || 'image/jpeg';
+
+      const response = await client.models.generateContent({
+        model: "gemini-3.1-pro-preview",
+        config: {
+          systemInstruction: "Você é o ChefIA, um Mentor Gastronômico experiente. Analise a imagem enviada e responda como um Chef profissional, direto e técnico. Use Português do Brasil.",
+          maxOutputTokens: 1500,
+        },
+        contents: [
           {
             role: "user",
-            content: [
-              { type: "text", text: input || "O que você vê nesta foto? Me dê uma receita se houver ingredientes." },
+            parts: [
+              { text: input || "O que você vê nesta foto? Me dê uma receita se houver ingredientes." },
               {
-                type: "image_url",
-                image_url: {
-                  url: imageUrl, // OpenAI aceita a URL direta do Telegram! (Mais rápido e estável)
+                inlineData: {
+                  data: base64Image,
+                  mimeType: mimeType,
                 },
               },
             ],
           },
         ],
-        max_tokens: 1500,
       });
 
-      console.log(`[Vision] Análise GPT-4o concluída.`);
-      return response.choices[0].message.content || 'Não consegui analisar a foto.';
+      console.log(`[Vision] Análise Gemini 3.1 Pro concluída.`);
+      return response.text || 'Não consegui analisar a foto.';
 
     } catch (error: any) {
-      console.error('[Vision Error OpenAI]:', error.message);
-      return `ChefIA (Erro OpenAI): ${error.message}`;
+      console.error('[Vision Error Gemini]:', error.message);
+      return `ChefIA (Erro Gemini): ${error.message}`;
     }
   }
 }

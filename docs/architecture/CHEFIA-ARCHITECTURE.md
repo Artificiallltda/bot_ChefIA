@@ -31,4 +31,4 @@ O ChefIA é construído sobre uma arquitetura de serviços desacoplados, permiti
 - **Linguagem:** TypeScript (Segurança de tipos para cálculos matemáticos).
 - **Backend:** Node.js (Express ou Fastify).
 - **Database:** Supabase (PostgreSQL + Auth + Storage para fotos de pães).
-- **AI/LLM:** GPT-4o ou Claude 3.5 Sonnet com RAG (Retrieval-Augmented Generation) para a base técnica de panificação.
+- **AI/LLM:** Gemini 3.1 Pro com RAG (Retrieval-Augmented Generation) para a base técnica de panificação.

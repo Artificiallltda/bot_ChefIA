@@ -1,19 +1,19 @@
 import { ChatMessage } from './SessionManager';
 import { supabase } from '../utils/SupabaseClient';
 import { EmbeddingGenerator } from '../utils/EmbeddingGenerator';
-import OpenAI from 'openai';
+import { GoogleGenAI } from '@google/genai';
 import * as fs from 'fs';
 import * as path from 'path';
 
 export class AIEngine {
-  private static _openaiClient: OpenAI | null = null;
+  private static _geminiClient: GoogleGenAI | null = null;
 
-  private static getOpenAIClient(): OpenAI {
-    if (!this._openaiClient) {
-      if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY não configurada.");
-      this._openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, maxRetries: 3 });
+  private static getGeminiClient(): GoogleGenAI {
+    if (!this._geminiClient) {
+      if (!process.env.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY não configurada.");
+      this._geminiClient = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     }
-    return this._openaiClient;
+    return this._geminiClient;
   }
 
   /**
@@ -62,7 +62,7 @@ export class AIEngine {
   }
 
   static async generateResponse(userName: string, input: string, history: ChatMessage[] = []): Promise<string> {
-    const model = process.env.AIOS_DEFAULT_MODEL || 'gpt-4o';
+    const model = process.env.AIOS_DEFAULT_MODEL || 'gemini-3.1-pro-preview';
     const knowledge = await this.getSemanticKnowledge(input);
     const brandContext = this.getBrandContext();
 
@@ -89,18 +89,18 @@ ${knowledge}
 ${historyText}`;
 
     try {
-      const openai = this.getOpenAIClient();
-      const completion = await openai.chat.completions.create({
+      const client = this.getGeminiClient();
+      const response = await client.models.generateContent({
         model: model,
-        temperature: 0.7,
-        max_tokens: 1500,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: input }
-        ]
+        config: {
+          temperature: 0.7,
+          maxOutputTokens: 1500,
+          systemInstruction: systemPrompt,
+        },
+        contents: input,
       });
 
-      return completion.choices[0]?.message?.content || 'Não consegui formular uma resposta.';
+      return response.text || 'Não consegui formular uma resposta.';
     } catch (error: any) {
       console.error('[AIEngine] Erro:', error.message);
       return 'Tive um pequeno contratempo na cozinha. Pode repetir?';

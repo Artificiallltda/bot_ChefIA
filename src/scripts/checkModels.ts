@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 import * as dotenv from 'dotenv';
 
 dotenv.config();
@@ -10,26 +10,29 @@ async function listSupportedModels() {
     return;
   }
 
-  const genAI = new GoogleGenerativeAI(apiKey);
+  const client = new GoogleGenAI({ apiKey });
   
   try {
-    // Nota: O método listModels pode não estar disponível em todas as versões do SDK
-    // Mas vamos tentar descobrir o modelo 2.0 ou 1.5 estável
-    console.log('--- TESTANDO MODELOS DE VISÃO ---');
+    console.log('--- TESTANDO MODELOS GEMINI 3.1 ---');
     
     const testModels = [
-      'gemini-2.0-flash',
-      'gemini-1.5-flash-latest',
-      'gemini-1.5-flash',
-      'gemini-1.5-pro'
+      'gemini-3.1-pro-preview',
+      'gemini-3-flash-preview',
+      'gemini-3.1-flash-lite-preview',
+      'gemini-3-pro-image-preview',
+      'gemini-3.1-flash-image-preview'
     ];
 
     for (const modelName of testModels) {
       try {
-        const model = genAI.getGenerativeModel({ model: modelName });
-        console.log(`✅ Modelo '${modelName}' parece registrado no SDK.`);
-      } catch (e) {
-        console.log(`❌ Modelo '${modelName}' indisponível.`);
+        const response = await client.models.generateContent({
+          model: modelName,
+          contents: 'Responda apenas: OK',
+          config: { maxOutputTokens: 10 },
+        });
+        console.log(`✅ Modelo '${modelName}' disponível. Resposta: ${response.text?.trim()}`);
+      } catch (e: any) {
+        console.log(`❌ Modelo '${modelName}' indisponível: ${e.message}`);
       }
     }
   } catch (error: any) {

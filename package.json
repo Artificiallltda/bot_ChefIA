@@ -1,7 +1,7 @@
 {
   "name": "@synkra/chefia-core",
   "version": "2.3.0",
-  "description": "ChefIA Core Intelligence - OpenAI GPT-4o Vision",
+  "description": "ChefIA Core Intelligence - Gemini 3.1 Pro Vision",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
+    "@google/genai": "^1.45.0",
     "@google/generative-ai": "^0.24.1",
     "@supabase/supabase-js": "^2.98.0",
     "chalk": "^4.1.2",
