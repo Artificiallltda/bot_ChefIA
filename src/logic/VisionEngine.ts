@@ -31,7 +31,7 @@ export class VisionEngine {
         model: "gemini-3.1-pro-preview",
         config: {
           systemInstruction: "Você é o ChefIA, um Mentor Gastronômico experiente. Analise a imagem enviada e responda como um Chef profissional, direto e técnico. Use Português do Brasil.",
-          maxOutputTokens: 1500,
+          maxOutputTokens: 4096,
         },
         contents: [
           {

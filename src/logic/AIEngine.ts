@@ -94,11 +94,18 @@ ${historyText}`;
         model: model,
         config: {
           temperature: 0.7,
-          maxOutputTokens: 1500,
+          maxOutputTokens: 4096,
           systemInstruction: systemPrompt,
         },
-        contents: input,
+        contents: [
+          { role: 'user', parts: [{ text: input }] }
+        ],
       });
+
+      // Log para diagnóstico de truncamento
+      if (response.usageMetadata) {
+        console.log(`[AIEngine] Tokens: Prompt=${response.usageMetadata.promptTokenCount}, Out=${response.usageMetadata.candidatesTokenCount}`);
+      }
 
       return response.text || 'Não consegui formular uma resposta.';
     } catch (error: any) {
