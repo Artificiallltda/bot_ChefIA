@@ -26,14 +26,14 @@ async function migrate() {
     await client.query('UPDATE knowledge SET embedding = NULL;');
 
     // 2. Altera a coluna para 768 dimensões
-    console.log('[Migração] Alterando coluna embedding para VECTOR(768)...');
-    await client.query('ALTER TABLE knowledge ALTER COLUMN embedding TYPE VECTOR(768);');
+    console.log('[Migração] Alterando coluna embedding para VECTOR(3072)...');
+    await client.query('ALTER TABLE knowledge ALTER COLUMN embedding TYPE VECTOR(3072);');
 
     // 3. Recria a função match_knowledge com 768
-    console.log('[Migração] Recriando função match_knowledge com VECTOR(768)...');
+    console.log('[Migração] Recriando função match_knowledge com VECTOR(3072)...');
     await client.query(`
       CREATE OR REPLACE FUNCTION match_knowledge (
-        query_embedding VECTOR(768),
+        query_embedding VECTOR(3072),
         match_threshold FLOAT,
         match_count INT
       )

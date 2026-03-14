@@ -26,7 +26,7 @@ async function setup() {
         id BIGSERIAL PRIMARY KEY,
         file_name TEXT UNIQUE,
         content TEXT NOT NULL,
-        embedding VECTOR(768),
+        embedding VECTOR(3072),
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       );
     `);
@@ -35,7 +35,7 @@ async function setup() {
     console.log('[Setup] Criando função de busca "match_knowledge"...');
     await client.query(`
       CREATE OR REPLACE FUNCTION match_knowledge (
-        query_embedding VECTOR(768),
+        query_embedding VECTOR(3072),
         match_threshold FLOAT,
         match_count INT
       )
