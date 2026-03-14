@@ -19,14 +19,14 @@ async function setup() {
     console.log('[Setup] Habilitando extensão "vector"...');
     await client.query('CREATE EXTENSION IF NOT EXISTS vector;');
 
-    // 2. Criar Tabela Knowledge
+    // 2. Criar Tabela Knowledge (768 dimensões para Gemini text-embedding-004)
     console.log('[Setup] Criando tabela "knowledge"...');
     await client.query(`
       CREATE TABLE IF NOT EXISTS knowledge (
         id BIGSERIAL PRIMARY KEY,
         file_name TEXT UNIQUE,
         content TEXT NOT NULL,
-        embedding VECTOR(1536),
+        embedding VECTOR(768),
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       );
     `);
@@ -35,7 +35,7 @@ async function setup() {
     console.log('[Setup] Criando função de busca "match_knowledge"...');
     await client.query(`
       CREATE OR REPLACE FUNCTION match_knowledge (
-        query_embedding VECTOR(1536),
+        query_embedding VECTOR(768),
         match_threshold FLOAT,
         match_count INT
       )
