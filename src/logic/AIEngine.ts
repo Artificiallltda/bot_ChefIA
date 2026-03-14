@@ -91,7 +91,7 @@ ${historyText}`;
     try {
       const client = this.getGeminiClient();
       const response = await client.models.generateContent({
-        model: model,
+        model: "gemini-3-flash-preview",
         config: {
           temperature: 0.7,
           maxOutputTokens: 4096,

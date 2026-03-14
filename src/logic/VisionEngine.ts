@@ -28,7 +28,7 @@ export class VisionEngine {
       const mimeType = imageResponse.headers.get('content-type') || 'image/jpeg';
 
       const response = await client.models.generateContent({
-        model: "gemini-3.1-pro-preview",
+        model: "gemini-3-flash-preview",
         config: {
           systemInstruction: "Você é o ChefIA, um Mentor Gastronômico experiente. Analise a imagem enviada e responda como um Chef profissional, direto e técnico. Use Português do Brasil.",
           maxOutputTokens: 4096,
