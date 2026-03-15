@@ -8,6 +8,11 @@ import * as path from 'path';
 export class AIEngine {
   private static _geminiClient: GoogleGenAI | null = null;
 
+  // FIX: Cache em memória do dossiê de reputação — evita leitura de disco a cada mensagem
+  private static _brandContextCache: string | null = null;
+  private static _brandContextLoadedAt: number = 0;
+  private static readonly BRAND_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutos
+
   private static getGeminiClient(): GoogleGenAI {
     if (!this._geminiClient) {
       if (!process.env.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY não configurada.");
@@ -18,8 +23,17 @@ export class AIEngine {
 
   /**
    * Lê o dossiê de reputação da memória compartilhada.
+   * FIX: Implementa cache em memória com TTL de 10 minutos para evitar
+   * leitura síncrona de disco a cada mensagem recebida.
    */
   private static getBrandContext(): string {
+    const now = Date.now();
+
+    // Retorna do cache se ainda válido
+    if (this._brandContextCache !== null && (now - this._brandContextLoadedAt) < this.BRAND_CACHE_TTL_MS) {
+      return this._brandContextCache;
+    }
+
     try {
       // Tenta localizar o dossiê na raiz do projeto ou na pasta data
       const paths = [
@@ -30,11 +44,22 @@ export class AIEngine {
 
       for (const p of paths) {
         if (fs.existsSync(p)) {
-          return fs.readFileSync(p, 'utf-8').substring(0, 15000);
+          this._brandContextCache = fs.readFileSync(p, 'utf-8').substring(0, 15000);
+          this._brandContextLoadedAt = now;
+          console.log(`[AIEngine] Dossiê de marca carregado e cacheado de: ${p}`);
+          return this._brandContextCache;
         }
       }
+
+      // Nenhum arquivo encontrado — cacheia string vazia para não tentar de novo
+      this._brandContextCache = "";
+      this._brandContextLoadedAt = now;
       return "";
-    } catch (e) {
+    } catch (e: any) {
+      // FIX: Logar erro em vez de silenciar
+      console.error('[AIEngine] Erro ao carregar dossiê de marca:', e.message);
+      this._brandContextCache = "";
+      this._brandContextLoadedAt = now;
       return "";
     }
   }
@@ -48,7 +73,11 @@ export class AIEngine {
         match_count: 3
       });
 
-      if (error) throw error;
+      // FIX: Tratamento de erros com logging detalhado em vez de falha silenciosa
+      if (error) {
+        console.error('[AIEngine] Erro na busca semântica (Supabase RPC):', error.message, error.details);
+        return '';
+      }
       if (!data || data.length === 0) return '';
 
       let context = '--- CONHECIMENTO TÉCNICO RELEVANTE ---\n';
@@ -57,6 +86,8 @@ export class AIEngine {
       });
       return context;
     } catch (error: any) {
+      // FIX: Logar erro completo em vez de retornar silenciosamente
+      console.error('[AIEngine] Falha crítica na busca semântica:', error.message);
       return '';
     }
   }
@@ -109,7 +140,8 @@ ${historyText}`;
 
       return response.text || 'Não consegui formular uma resposta.';
     } catch (error: any) {
-      console.error('[AIEngine] Erro:', error.message);
+      // FIX: Logar erro completo mas NÃO vazar detalhes da API ao usuário
+      console.error('[AIEngine] Erro na chamada à API:', error.message, error.status || '');
       return 'Tive um pequeno contratempo na cozinha. Pode repetir?';
     }
   }
