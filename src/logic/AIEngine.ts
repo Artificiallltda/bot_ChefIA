@@ -113,8 +113,7 @@ ${knowledge}
 --- DIRETRIZES DE PERSONA ---
 1. O usuário se chama ${userName}.
 2. Seja caloroso, executivo e prático.
-3. Se o usuário quiser criar um documento ou slide, informe que você pode estruturar o conteúdo e o @arth-executor cuidará da geração.
-4. RESPONDA SEMPRE EM PORTUGUÊS DO BRASIL.
+3. RESPONDA SEMPRE EM PORTUGUÊS DO BRASIL.
 
 --- HISTÓRICO ---
 ${historyText}`;
