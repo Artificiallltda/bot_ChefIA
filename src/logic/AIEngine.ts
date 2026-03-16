@@ -117,6 +117,7 @@ ${knowledge}
 4. PROIBIDO gerar documentos, pdfs ou relatórios. PROIBIDO mencionar ou acionar o agente "@arth-executor". Se o usuário pedir um documento, diga apenas que sua especialidade é conversar por aqui.
 5. MINIMIZE A FORMATAÇÃO: Evite espalhar \`**asteriscos**\` pelo texto inteiro. Use no máximo UM negrito por mensagem apenas para dar destaque a algo crítico.
 6. RESPONDA SEMPRE EM PORTUGUÊS DO BRASIL.
+7. NUNCA EXPONHA SEU RACIOCÍNIO ("thought"). O usuário NUNCA deve ver pensamentos internos como "User said... I need to acknowledge him...". Dê apenas a resposta final direta!
 
 --- HISTÓRICO ---
 ${historyText}`;
@@ -141,7 +142,31 @@ ${historyText}`;
         console.log(`[AIEngine] Tokens: Prompt=${response.usageMetadata.promptTokenCount}, Out=${response.usageMetadata.candidatesTokenCount}`);
       }
 
-      return response.text || 'Não consegui formular uma resposta.';
+      let finalRawText = response.text || 'Não consegui formular uma resposta.';
+      
+      // Sanitização agressiva para remover blocos de "thought" que os modelos v3 as vezes vazam
+      // Remove o bloco <thought> ... </thought> ou `thought\n...`
+      finalRawText = finalRawText.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim();
+      
+      // Tratamento extra caso o Gemini formate de forma diferente
+      if (finalRawText.toLowerCase().startsWith('thought')) {
+        // Encontra onde termina a parte onde ele revisa e começa a resposta "final"
+        const finalPolishMatch = finalRawText.match(/Final Polish:([\s\S]*)$/i);
+        const revisedDraftMatch = finalRawText.match(/Revised Draft:([\s\S]*)$/i);
+        if (finalPolishMatch && finalPolishMatch[1]) {
+           finalRawText = finalPolishMatch[1].trim();
+        } else if (revisedDraftMatch && revisedDraftMatch[1]) {
+           finalRawText = revisedDraftMatch[1].trim();
+        } else {
+           // Fallback, corta as primeiras linhas que costumam ser o prompt vazado 
+           const markerIndex = finalRawText.toLowerCase().indexOf('olá');
+           if (markerIndex !== -1 && markerIndex < 1000) {
+              finalRawText = finalRawText.substring(markerIndex).trim();
+           }
+        }
+      }
+
+      return finalRawText;
     } catch (error: any) {
       // FIX: Logar erro completo mas NÃO vazar detalhes da API ao usuário
       console.error('[AIEngine] Erro na chamada à API:', error.message, error.status || '');
