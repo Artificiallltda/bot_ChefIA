@@ -58,10 +58,22 @@ export class TelegramProvider implements IMessengerProvider {
 
   async sendMessage(message: OutgoingMessage): Promise<void> {
     try {
+      // Tenta enviar com formatação Markdown
       await this.bot.sendMessage(message.to, message.text, { parse_mode: 'Markdown' });
       console.log(`[Telegram] Resposta enviada para ${message.to}`);
-    } catch (error) {
-      console.error(`[Telegram] Erro ao enviar mensagem para ${message.to}:`, error);
+    } catch (error: any) {
+      if (error.message && error.message.includes('parse entities')) {
+        console.warn(`[Telegram] Erro de formatação Markdown. Tentando enviar como texto puro para ${message.to}...`);
+        try {
+          // Fallback: envia sem parse_mode se o markdown do LLM estiver quebrado
+          await this.bot.sendMessage(message.to, message.text);
+          console.log(`[Telegram] Resposta enviada (texto puro) para ${message.to}`);
+        } catch (fallbackError) {
+          console.error(`[Telegram] Erro crítico ao enviar mensagem para ${message.to}:`, fallbackError);
+        }
+      } else {
+        console.error(`[Telegram] Erro ao enviar mensagem para ${message.to}:`, error);
+      }
     }
   }
 
