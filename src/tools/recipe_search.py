@@ -14,9 +14,12 @@ from typing import Optional, List, Dict, Any, Tuple
 from dataclasses import dataclass, asdict
 from enum import Enum
 
-import google.generativeai as genai
+# ── NOVA BIBLIOTECA GOOGLE GENAI ──
+import google.genai as genai
+from google.genai import types
 from supabase import create_client, Client
 from dotenv import load_dotenv
+from pathlib import Path
 
 # Configurar logging
 logging.basicConfig(
@@ -25,8 +28,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Carregar variáveis de ambiente
-load_dotenv()
+# ── CARREGAR .ENV COM CAMINHO ABSOLUTO ──
+env_path = Path(__file__).parent.parent.parent / ".env"
+if env_path.exists():
+    load_dotenv(env_path, override=True)
+    logger.info(f"✅ recipe_search: .env carregado de: {env_path}")
 
 
 class DietaryPreference(str, Enum):
@@ -138,8 +144,8 @@ class RecipeSearchEngine:
     """
 
     # Configurações do modelo de embedding
-    EMBEDDING_MODEL = "models/text-embedding-004"
-    EMBEDDING_DIMENSION = 768
+    EMBEDDING_MODEL = "models/gemini-embedding-2-preview"  # ✅ Modelo oficial Gemini Embedding 2
+    EMBEDDING_DIMENSION = 3072  # Gemini Embedding 2 usa 3072 dimensões
     SIMILARITY_THRESHOLD = 0.5
     MAX_RESULTS = 10
 
@@ -164,11 +170,13 @@ class RecipeSearchEngine:
                 "GEMINI_API_KEY não configurada. "
                 "Defina a variável de ambiente ou passe como argumento."
             )
-        genai.configure(api_key=self.gemini_api_key)
+        # NOTA: Não precisa de configure() na nova biblioteca google.genai
+        # A chave é passada diretamente no client.models.embed_content()
 
         # Configurar Supabase
         self.supabase_url = supabase_url or os.getenv("SUPABASE_URL")
-        self.supabase_key = supabase_key or os.getenv("SUPABASE_KEY")
+        # Tentar SUPABASE_SERVICE_KEY primeiro, depois SUPABASE_KEY como fallback
+        self.supabase_key = supabase_key or os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY")
 
         if not self.supabase_url or not self.supabase_key:
             raise ValueError(
@@ -181,24 +189,36 @@ class RecipeSearchEngine:
 
     def _embed_text(self, text: str) -> List[float]:
         """
-        Gera embedding para um texto usando Gemini Embedding 2.
+        Gera embedding para um texto usando Google Gemini Embedding 2.
 
         Args:
             text: Texto para vetorizar
 
         Returns:
-            Lista de floats representando o embedding
+            Lista de floats representando o embedding (3072 dimensões)
         """
         try:
             logger.debug(f"Gerando embedding para texto de {len(text)} caracteres")
-            response = genai.embed_content(
-                model=self.EMBEDDING_MODEL,
-                content=text,
-                task_type="SEMANTIC_SIMILARITY",
+            
+            # Criar cliente com a chave API correta
+            api_key = os.getenv("GEMINI_API_KEY")
+            if not api_key:
+                raise ValueError("GEMINI_API_KEY não configurada")
+            
+            client = genai.Client(api_key=api_key)
+            
+            # Usar modelo oficial Gemini Embedding 2
+            embedding_response = client.models.embed_content(
+                model="models/gemini-embedding-2-preview",
+                contents=[text]
             )
-            embedding = response["embedding"]
-            logger.debug(f"Embedding gerado com sucesso: {len(embedding)} dimensões")
+            
+            # Extrair embedding da resposta
+            embedding = embedding_response.embeddings[0].values
+            
+            logger.debug(f"✅ Embedding gerado com sucesso: {len(embedding)} dimensões (Gemini Embedding 2)")
             return embedding
+            
         except Exception as e:
             logger.error(f"Erro ao gerar embedding: {str(e)}")
             raise
@@ -230,7 +250,7 @@ class RecipeSearchEngine:
         recipe: Recipe,
     ) -> str:
         """
-        Adiciona uma receita ao banco de dados com embedding.
+        Adiciona uma receita ao banco de dados com embedding (ou sem se não disponível).
 
         Args:
             recipe: Objeto Recipe
@@ -239,32 +259,42 @@ class RecipeSearchEngine:
             ID da receita armazenada
         """
         try:
-            # Gerar embedding
-            recipe_text = self._create_recipe_text_for_embedding(recipe)
-            embedding = self._embed_text(recipe_text)
-            recipe.embedding = embedding
+            # Gerar embedding (com fallback se não disponível)
+            embedding = None
+            try:
+                recipe_text = self._create_recipe_text_for_embedding(recipe)
+                embedding = self._embed_text(recipe_text)
+                recipe.embedding = embedding
+                logger.info(f"✅ Embedding gerado para receita: {recipe.id}")
+            except Exception as e:
+                logger.warning(f"⚠️  Embedding não disponível para receita {recipe.id}: {e}")
+                logger.warning("💡 Receita será armazenada sem embedding (busca por texto será usada)")
+
+            # Preparar dados para armazenamento
+            data_to_store = {
+                "id": recipe.id,
+                "title": recipe.title,
+                "description": recipe.description,
+                "ingredients": recipe.ingredients,
+                "instructions": recipe.instructions,
+                "cuisine_type": recipe.cuisine_type.value,
+                "difficulty_level": recipe.difficulty_level.value,
+                "cooking_time": recipe.cooking_time,
+                "servings": recipe.servings,
+                "dietary_tags": recipe.dietary_tags,
+                "spice_level": recipe.spice_level,
+                "metadata": recipe.metadata or {},
+                "created_at": recipe.created_at or datetime.now().isoformat(),
+            }
+            
+            # Adicionar embedding apenas se estiver disponível
+            if embedding:
+                data_to_store["embedding"] = embedding
 
             # Armazenar no Supabase
-            response = self.supabase.table("recipes").insert(
-                {
-                    "id": recipe.id,
-                    "title": recipe.title,
-                    "description": recipe.description,
-                    "ingredients": recipe.ingredients,
-                    "instructions": recipe.instructions,
-                    "cuisine_type": recipe.cuisine_type.value,
-                    "difficulty_level": recipe.difficulty_level.value,
-                    "cooking_time": recipe.cooking_time,
-                    "servings": recipe.servings,
-                    "dietary_tags": recipe.dietary_tags,
-                    "spice_level": recipe.spice_level,
-                    "embedding": embedding,
-                    "metadata": recipe.metadata or {},
-                    "created_at": recipe.created_at or datetime.now().isoformat(),
-                }
-            ).execute()
+            response = self.supabase.table("recipes").insert(data_to_store).execute()
 
-            logger.info(f"Receita adicionada: {recipe.id}")
+            logger.info(f"✅ Receita adicionada: {recipe.id}" + (" com embedding" if embedding else " (sem embedding)"))
             return recipe.id
 
         except Exception as e:
@@ -281,7 +311,7 @@ class RecipeSearchEngine:
         max_cooking_time: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """
-        Busca receitas semanticamente similares à query.
+        Busca receitas semanticamente similares à query (com fallback para busca por texto).
 
         Args:
             query: Texto para buscar (ex: "receita rápida com frango")
@@ -298,8 +328,23 @@ class RecipeSearchEngine:
             limit = limit or self.MAX_RESULTS
             threshold = threshold or self.SIMILARITY_THRESHOLD
 
-            # Gerar embedding da query
-            query_embedding = self._embed_text(query)
+            # Tentar gerar embedding da query
+            query_embedding = None
+            try:
+                query_embedding = self._embed_text(query)
+            except Exception as e:
+                logger.warning(f"⚠️  Embedding não disponível para busca: {e}")
+                logger.warning("💡 Usando busca por texto simples como fallback")
+
+            # Se embedding não estiver disponível, usar busca por texto
+            if not query_embedding:
+                return self._search_recipes_by_text(
+                    query=query,
+                    limit=limit,
+                    cuisine_filter=cuisine_filter,
+                    difficulty_filter=difficulty_filter,
+                    max_cooking_time=max_cooking_time
+                )
 
             # Construir filtros adicionais
             filters = []
@@ -329,6 +374,69 @@ class RecipeSearchEngine:
 
         except Exception as e:
             logger.error(f"Erro ao buscar receitas: {str(e)}")
+            return []
+
+    def _search_recipes_by_text(
+        self,
+        query: str,
+        limit: int = 10,
+        cuisine_filter: Optional[CuisineType] = None,
+        difficulty_filter: Optional[DifficultyLevel] = None,
+        max_cooking_time: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Fallback: Busca receitas por texto simples quando embeddings não estão disponíveis.
+
+        Args:
+            query: Texto para buscar
+            limit: Número máximo de resultados
+            cuisine_filter: Filtrar por culinária
+            difficulty_filter: Filtrar por dificuldade
+            max_cooking_time: Tempo máximo de preparo
+
+        Returns:
+            Lista de receitas encontradas
+        """
+        try:
+            # Construir query com filtros
+            query_builder = self.supabase.table("recipes").select("*")
+            
+            # Filtro por texto (usando ilike para busca case-insensitive)
+            # Dividir query em palavras-chave
+            keywords = query.lower().split()
+            for keyword in keywords[:3]:  # Usar até 3 palavras-chave
+                if len(keyword) > 2:  # Ignorar palavras muito curtas
+                    query_builder = query_builder.or_(
+                        f"title.ilike.%{keyword}%,description.ilike.%{keyword}%"
+                    )
+            
+            # Aplicar filtros adicionais
+            if cuisine_filter:
+                query_builder = query_builder.eq("cuisine_type", cuisine_filter.value)
+            
+            if difficulty_filter:
+                query_builder = query_builder.eq("difficulty_level", difficulty_filter.value)
+            
+            if max_cooking_time:
+                query_builder = query_builder.lte("cooking_time", max_cooking_time)
+            
+            # Ordenar por popularidade (se existir) ou mais recentes
+            try:
+                response = query_builder.order("popularity_score", desc=True).limit(limit).execute()
+            except:
+                response = query_builder.order("created_at", desc=True).limit(limit).execute()
+            
+            results = response.data if response.data else []
+            logger.info(f"📝 Busca por texto encontrou {len(results)} receitas")
+            
+            # Adicionar score de similaridade fake para compatibilidade
+            for recipe in results:
+                recipe["similarity"] = 0.5  # Score médio para busca por texto
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"Erro na busca por texto: {str(e)}")
             return []
 
     def personalize_recommendations(
