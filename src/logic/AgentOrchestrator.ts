@@ -2,7 +2,7 @@ import { ChatMessage } from './SessionManager';
 import { ChefWriter } from './agents/ChefWriter';
 import { Nutritionist } from './agents/Nutritionist';
 import { SocialAgent } from './agents/SocialAgent';
-import { AIEngine } from './AIEngine';
+import { HybridRouter } from './HybridRouter';
 
 type Intent = 'tecnica' | 'nutricao' | 'social' | 'misto' | 'geral';
 
@@ -13,7 +13,7 @@ type Intent = 'tecnica' | 'nutricao' | 'social' | 'misto' | 'geral';
  * O cliente no Telegram nunca vê os agentes — só recebe a resposta final unificada.
  *
  * Fluxo:
- *   Mensagem → detectIntent() → agente(s) em paralelo → resposta unificada
+ *   Mensagem → detectIntent() → HybridRouter (Gemini/Claude) → resposta unificada
  */
 export class AgentOrchestrator {
 
@@ -47,50 +47,40 @@ export class AgentOrchestrator {
 
     /**
      * Ponto de entrada principal.
-     * Detecta intenção e aciona os agentes certos em paralelo.
+     * Detecta intenção e usa HybridRouter para escolher entre Gemini (básico) e Claude (complexo).
      */
     static async process(userName: string, input: string, history: ChatMessage[]): Promise<string> {
         const intent = this.detectIntent(input);
         console.log(`[Orchestrator] Intenção detectada: "${intent}" para: "${input.substring(0, 50)}..."`);
 
-        switch (intent) {
-            case 'tecnica':
-                return ChefWriter.respond(userName, input, history);
+        // Para intenções especializadas, adicionamos contexto mas usamos HybridRouter
+        let enrichedInput = input;
+        
+        if (intent === 'tecnica') {
+            enrichedInput = `[CONTEXTO: Questão técnica de gastronomia. Use precisão técnica e explique a ciência por trás quando relevante.]\n\n${input}`;
+        } else if (intent === 'nutricao') {
+            enrichedInput = `[CONTEXTO: Questão de nutrição aplicada à gastronomia. Seja preciso com dados nutricionais e considere restrições alimentares.]\n\n${input}`;
+        } else if (intent === 'social') {
+            enrichedInput = `[CONTEXTO: Conteúdo para mídias sociais. Adapte o tom para ser engajante e use linguagem adequada para Instagram/TikTok.]\n\n${input}`;
+        } else if (intent === 'misto') {
+            const lower = input.toLowerCase();
+            const isSocial = ['instagram', 'tiktok', 'post', 'legenda', 'reel', 'story', 'hashtag', 'conteúdo', 'conteudo'].some(k => lower.includes(k));
+            const isNutri = ['caloria', 'macro', 'proteina', 'dieta', 'vegano', 'gluten', 'lactose', 'kcal', 'nutri'].some(k => lower.includes(k));
 
-            case 'nutricao':
-                return Nutritionist.respond(userName, input, history);
-
-            case 'social':
-                return SocialAgent.respond(userName, input, history);
-
-            case 'misto': {
-                // Em vez de acionar múltiplos agentes e colar os textos gigantescos,
-                // pedimos ao AIEngine (cérebro central) para processar as múltiplas intenções de forma fluida.
-                console.log('[Orchestrator] Intenção mista detectada. Encaminhando ao AIEngine com contexto enriquecido...');
-
-                const lower = input.toLowerCase();
-                const isSocial = ['instagram', 'tiktok', 'post', 'legenda', 'reel', 'story', 'hashtag', 'conteúdo', 'conteudo'].some(k => lower.includes(k));
-                const isNutri = ['caloria', 'macro', 'proteina', 'dieta', 'vegano', 'gluten', 'lactose', 'kcal', 'nutri'].some(k => lower.includes(k));
-
-                let extraContext = "Contexto adicional para a sua resposta: ";
-                if (isNutri && isSocial) {
-                    extraContext += "O usuário precisa de ajuda mesclando dicas nutricionais com criação de conteúdo social/gastronômico.";
-                } else if (isNutri) {
-                    extraContext += "O usuário está misturando uma dúvida técnica de cozinha com nutrição/dietas. Resolva as duas partes de forma unificada e concisa.";
-                } else if (isSocial) {
-                    extraContext += "O usuário está querendo pegar uma técnica de pão/comida para usar em mídias sociais. Adapte o tom.";
-                }
-
-                // Cria um input enriquecido invisível ao usuário, visível ao LLM
-                const enrichedInput = `[INSTRUÇÃO DO ORQUESTRADOR: ${extraContext}]\n\nMensagem do usuário: ${input}`;
-
-                return AIEngine.generateResponse(userName, enrichedInput, history);
+            let extraContext = "[CONTEXTO MISTO: ";
+            if (isNutri && isSocial) {
+                extraContext += "Mescle nutrição com criação de conteúdo social de forma engajante.";
+            } else if (isNutri) {
+                extraContext += "Una técnica gastronômica com nutrição de forma prática.";
+            } else if (isSocial) {
+                extraContext += "Adapte técnica gastronômica para formato de conteúdo social.";
             }
-
-            default:
-                // Resposta geral — usa AIEngine padrão sem especialização
-                console.log('[Orchestrator] Resposta geral acionada.');
-                return AIEngine.generateResponse(userName, input, history);
+            extraContext += "]\n\n";
+            enrichedInput = extraContext + input;
         }
+
+        // Usar HybridRouter para todas as intenções (roteamento automático Gemini/Claude)
+        console.log(`[Orchestrator] Encaminhando para HybridRouter...`);
+        return HybridRouter.generateResponse(userName, enrichedInput, history);
     }
 }

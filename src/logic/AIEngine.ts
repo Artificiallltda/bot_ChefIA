@@ -93,7 +93,7 @@ export class AIEngine {
   }
 
   static async generateResponse(userName: string, input: string, history: ChatMessage[] = []): Promise<string> {
-    const model = process.env.AIOS_DEFAULT_MODEL || 'gemini-3.1-pro-preview';
+    const model = process.env.AIOS_DEFAULT_MODEL || 'gemini-2.5-flash-preview-05-2026';
     const knowledge = await this.getSemanticKnowledge(input);
     const brandContext = this.getBrandContext();
 
