@@ -13,12 +13,39 @@ export class AIEngine {
   private static _brandContextLoadedAt: number = 0;
   private static readonly BRAND_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutos
 
+  // Configuração de retry com backoff exponencial
+  private static readonly MAX_RETRIES = 3;
+  private static readonly RETRY_DELAY_MS = 2000; // Delay inicial: 2s (dobra a cada tentativa)
+  private static readonly RETRYABLE_CODES = [503, 429]; // Sobrecarga e Rate Limit
+
   private static getGeminiClient(): GoogleGenAI {
     if (!this._geminiClient) {
       if (!process.env.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY não configurada.");
       this._geminiClient = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     }
     return this._geminiClient;
+  }
+
+  /**
+   * Executa uma função com retry automático e backoff exponencial.
+   * Útil para lidar com erros temporários da API (503, 429).
+   */
+  private static async withRetry<T>(fn: () => Promise<T>, attempt = 1): Promise<T> {
+    try {
+      return await fn();
+    } catch (error: any) {
+      const statusCode = error?.status || error?.code || 0;
+      const isRetryable = this.RETRYABLE_CODES.includes(Number(statusCode));
+
+      if (isRetryable && attempt <= this.MAX_RETRIES) {
+        const delay = this.RETRY_DELAY_MS * Math.pow(2, attempt - 1); // 2s, 4s, 8s
+        console.warn(`[AIEngine] API indisponível (${statusCode}). Tentativa ${attempt}/${this.MAX_RETRIES}. Aguardando ${delay / 1000}s...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return this.withRetry(fn, attempt + 1);
+      }
+
+      throw error;
+    }
   }
 
   /**
@@ -153,18 +180,20 @@ ${historyText}`;
 
     try {
       const client = this.getGeminiClient();
-      const response = await client.models.generateContent({
-        model: "gemini-3-flash-preview",
-        config: {
-          temperature: 0.7,
-          maxOutputTokens: 4096,
-          systemInstruction: systemPrompt,
-          tools: [{ googleSearch: {} }],
-        },
-        contents: [
-          { role: 'user', parts: [{ text: input }] }
-        ],
-      });
+      const response = await this.withRetry(() =>
+        client.models.generateContent({
+          model: "gemini-3-flash-preview",
+          config: {
+            temperature: 0.7,
+            maxOutputTokens: 4096,
+            systemInstruction: systemPrompt,
+            tools: [{ googleSearch: {} }],
+          },
+          contents: [
+            { role: 'user', parts: [{ text: input }] }
+          ],
+        })
+      );
 
       // Log para diagnóstico de truncamento
       if (response.usageMetadata) {
